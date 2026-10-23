@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1115">
+  <title>Estoque Casa</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body class="out">
+  <header>
+    <h1>Estoque Casa</h1>
+    <div class="actions">
+      <button id="notifyBtn" class="icon-btn" aria-label="Ativar notificações">🔔</button>
+      <button id="logoutBtn" class="icon-btn" aria-label="Sair">⎋</button>
+    </div>
+  </header>
+
+  <section id="login">
+    <form id="loginForm" class="card">
+      <h2>Entrar</h2>
+      <p class="muted">Vamos enviar um link de acesso para o seu e-mail. Abra o link neste mesmo aparelho.</p>
+      <label>E-mail<input id="email" type="email" autocomplete="email" required></label>
+      <button class="primary" type="submit">Enviar link</button>
+    </form>
+  </section>
+
+  <main>
+    <!-- LANÇAR -->
+    <section id="view-entry" class="view active">
+      <div class="seg" role="tablist">
+        <button data-type="PURCHASE" class="active">🛒 Compra / Entrada</button>
+        <button data-type="CONSUMPTION">🍽️ Consumo / Baixa</button>
+      </div>
+
+      <div id="catPills" class="pills"></div>
+      <input id="search" type="search" placeholder="Buscar produto…" autocomplete="off" aria-label="Buscar produto">
+      <div id="picker" class="picker"></div>
+
+      <form id="entryForm" class="card">
+        <label id="whoLabel">Quem pagou</label>
+        <div id="matePills" class="pills"></div>
+        <label id="collectiveRow" class="switch"><input id="collective" type="checkbox" checked> Compra coletiva para a casa?</label>
+
+        <div id="selected" class="selected muted">Selecione um produto acima</div>
+
+        <label>Quantidade</label>
+        <div class="qty">
+          <button type="button" data-step="-1">−1</button>
+          <input id="qty" type="number" inputmode="decimal" step="any" min="0" value="1" required aria-label="Quantidade">
+          <button type="button" data-step="1">+1</button>
+          <button type="button" data-step="2">+2</button>
+          <button type="button" data-step="5">+5</button>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="price">Preço unitário (R$)</label>
+            <input id="price" type="number" inputmode="decimal" step="0.01" min="0" value="0">
+          </div>
+          <div>
+            <label for="date">Data</label>
+            <input id="date" type="date" required>
+          </div>
+        </div>
+        <input id="notes" type="text" placeholder="Observação (opcional)" aria-label="Observação">
+
+        <div id="total" class="total">Total: R$ 0,00</div>
+        <button id="submitBtn" class="primary" type="submit" disabled>Lançar</button>
+      </form>
+    </section>
+
+    <!-- ESTOQUE -->
+    <section id="view-stock" class="view">
+      <div class="card urgent">
+        <div class="card-head">
+          <h2>🚨 Reposição urgente</h2>
+          <a id="waBtn" class="wa" target="_blank" rel="noopener">WhatsApp</a>
+        </div>
+        <ul id="urgentList"></ul>
+      </div>
+
+      <details class="card">
+        <summary>➕ Novo produto</summary>
+        <form id="productForm">
+          <input name="name" placeholder="Nome (ex: Arroz 5kg)" required aria-label="Nome">
+          <div class="row">
+            <select name="category_id" aria-label="Categoria" required></select>
+            <select name="unit" aria-label="Unidade">
+              <option>un</option><option>kg</option><option>g</option><option>L</option><option>ml</option><option>pct</option><option>cx</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Estoque atual<input name="current_stock" type="number" step="any" min="0" value="0"></label>
+            <label>Mínimo<input name="min_stock" type="number" step="any" min="0" value="1"></label>
+            <label>Alvo<input name="target_stock" type="number" step="any" min="0" value="5"></label>
+          </div>
+          <label>Preço de referência (R$)<input name="default_price" type="number" step="0.01" min="0" value="0"></label>
+          <button class="primary" type="submit">Cadastrar</button>
+        </form>
+      </details>
+
+      <details class="card">
+        <summary>👥 Moradores</summary>
+        <ul id="mateList" class="plain"></ul>
+        <form id="mateForm">
+          <div class="row">
+            <input name="avatar_icon" value="🙂" maxlength="8" aria-label="Emoji do morador" class="emoji">
+            <input name="name" placeholder="Nome" required aria-label="Nome do morador">
+          </div>
+          <input name="pix_key" placeholder="Chave Pix (opcional)" aria-label="Chave Pix">
+          <button class="primary" type="submit">Adicionar morador</button>
+        </form>
+      </details>
+
+      <div id="productGrid" class="grid"></div>
+    </section>
+
+    <!-- PAINEL -->
+    <section id="view-dash" class="view">
+      <div id="periodPills" class="pills">
+        <button data-period="day">Dia</button>
+        <button data-period="week">Semana</button>
+        <button data-period="month" class="active">Mês</button>
+        <button data-period="year">Ano</button>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><span>Gasto em reposição</span><strong id="kpiPurchase">–</strong></div>
+        <div class="kpi"><span>Custo consumido</span><strong id="kpiConsumption">–</strong></div>
+      </div>
+      <div class="card"><h2>Compras vs. Consumo</h2><canvas id="barChart" height="220"></canvas></div>
+      <div class="card"><h2>Gastos por nicho</h2><canvas id="pieChart" height="220"></canvas></div>
+      <div class="card wide">
+        <h2>📦 Itens com sobra detectada <small class="muted">(últimos 30 dias)</small></h2>
+        <ul id="excessList"></ul>
+      </div>
+      <div class="card wide">
+        <div class="card-head">
+          <h2>🤝 Fechamento do mês / Acerto de contas</h2>
+          <input id="settleMonth" type="month" aria-label="Mês do fechamento">
+        </div>
+        <div id="mateCards" class="grid"></div>
+        <ul id="transferList" class="plain"></ul>
+        <a id="settleWa" class="wa" target="_blank" rel="noopener">Compartilhar resumo no WhatsApp</a>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-view="view-entry" class="active">✏️<span>Lançar</span></button>
+    <button data-view="view-stock">📦<span>Estoque</span><b id="alertBadge" hidden></b></button>
+    <button data-view="view-dash">📊<span>Painel</span></button>
+  </nav>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
