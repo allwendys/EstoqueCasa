@@ -11,7 +11,7 @@ const LABEL = { out: 'Esgotado', low: 'Repor' };
 const saved = k => { try { return localStorage.getItem(k); } catch { return null; } };
 const save = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch { /* ignora */ } };
 
-const state = { categories: [], products: [], mates: [], editMate: null, person: saved('person'), type: 'PURCHASE', cat: null, productId: null, period: 'month' };
+const state = { categories: [], products: [], mates: [], editMate: null, editProduct: null, person: saved('person'), type: 'PURCHASE', cat: null, productId: null, period: 'month' };
 let barChart, pieChart;
 
 function toast(msg, err = false) {
@@ -186,18 +186,43 @@ function renderStock() {
       <div class="prod-top"><b>${esc(cat[p.category_id]?.icon)} ${esc(p.name)}</b>${lv !== 'ok' ? `<span class="badge ${lv}">${LABEL[lv]}</span>` : ''}</div>
       <div class="bar"><i style="width:${pct}%"></i></div>
       <small class="muted">${Number(p.current_stock)} ${esc(p.unit)} · mín ${Number(p.min_stock)} · alvo ${Number(p.target_stock)} · ${brl(p.default_price)}</small>
+      <button type="button" class="link" data-edit-product="${p.id}">Editar</button>
     </div>`;
   }).join('');
+}
+
+const PRODUCT_FIELDS = ['name', 'category_id', 'unit', 'current_stock', 'min_stock', 'target_stock', 'default_price'];
+
+function editProduct(id) {
+  const p = state.products.find(x => x.id === id), f = $('#productForm').elements;
+  state.editProduct = id;
+  for (const k of PRODUCT_FIELDS) f[k].value = p[k] ?? '';
+  $('#productSummary').textContent = `✏️ Editando: ${p.name}`;
+  $('#productSubmit').textContent = 'Salvar alterações';
+  $('#productCancel').hidden = false;
+  const details = $('#productForm').closest('details');
+  details.open = true;
+  details.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function resetProductForm() {
+  state.editProduct = null;
+  $('#productForm').reset();
+  $('#productSummary').textContent = '➕ Novo produto';
+  $('#productSubmit').textContent = 'Cadastrar';
+  $('#productCancel').hidden = true;
 }
 
 async function submitProduct(e) {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
   for (const k of ['current_stock', 'min_stock', 'target_stock', 'default_price']) f[k] = +f[k] || 0;
-  const { error } = await db.from('products').insert(f);
+  const { error } = state.editProduct
+    ? await db.from('products').update(f).eq('id', state.editProduct)
+    : await db.from('products').insert(f);
   if (error) return toast('Erro: ' + error.message, true);
-  toast('Produto cadastrado ✓');
-  e.target.reset();
+  toast(state.editProduct ? 'Produto atualizado ✓' : 'Produto cadastrado ✓');
+  resetProductForm();
   await loadBase();
 }
 
@@ -418,6 +443,8 @@ document.querySelector('.qty').onclick = e => {
 $('#qty').oninput = $('#price').oninput = updateTotal;
 $('#entryForm').onsubmit = submitEntry;
 $('#productForm').onsubmit = submitProduct;
+$('#productCancel').onclick = resetProductForm;
+$('#productGrid').onclick = e => { const id = e.target.dataset.editProduct; if (id) editProduct(id); };
 $('#notifyBtn').onclick = enableNotifications;
 $('#periodPills').onclick = e => {
   const b = e.target.closest('button'); if (!b) return;

@@ -84,7 +84,7 @@
       </div>
 
       <details class="card">
-        <summary>➕ Novo produto</summary>
+        <summary id="productSummary">➕ Novo produto</summary>
         <form id="productForm">
           <input name="name" placeholder="Nome (ex: Arroz 5kg)" required aria-label="Nome">
           <div class="row">
@@ -99,7 +99,8 @@
             <label>Alvo<input name="target_stock" type="number" step="any" min="0" value="5"></label>
           </div>
           <label>Preço de referência (R$)<input name="default_price" type="number" step="0.01" min="0" value="0"></label>
-          <button class="primary" type="submit">Cadastrar</button>
+          <button id="productSubmit" class="primary" type="submit">Cadastrar</button>
+          <button id="productCancel" class="ghost" type="button" hidden>Cancelar edição</button>
         </form>
       </details>
 
