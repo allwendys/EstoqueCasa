@@ -129,6 +129,7 @@ ul.plain li { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .mate summary::after { content: 'Ver itens ▾'; display: block; font-size: 12px; color: var(--accent); margin-top: 6px; }
 .mate[open] summary::after { content: 'Ocultar ▴'; }
 .lines { margin: 10px 0 0; font-size: 13px; }
+.consumed { display: block; margin-top: 2px; }
 .lines li { padding: 6px 0; }
 .saldo.pos { color: var(--green); }
 .saldo.neg { color: var(--red); }

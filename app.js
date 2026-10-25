@@ -308,29 +308,33 @@ async function loadSettlement() {
     db.from('stock_transactions')
       .select('transaction_date, type, quantity, total_price, is_collective, buyer_id, consumer_id, products(name, unit)')
       .gte('transaction_date', month + '-01').lt('transaction_date', next)
-      .or('buyer_id.not.is.null,consumer_id.not.is.null')
       .order('transaction_date', { ascending: false }),
   ]);
   if (error || lines.error) return toast('Erro no fechamento: ' + (error ?? lines.error).message, true);
 
+  // Consumo geral da casa = todos os ativos usaram; cada um "consumiu" uma parte igual (mesma regra do SQL).
+  const activeIds = new Set(state.mates.filter(m => m.is_active).map(m => m.id));
   $('#mateCards').innerHTML = data.map(r => {
     const b = Number(r.balance);
     const badge = b > 0 ? '<span class="badge pos">A receber</span>' : b < 0 ? '<span class="badge out">Deve pagar</span>' : '<span class="badge">Quite</span>';
-    const items = lines.data.filter(x => x.buyer_id === r.housemate_id || x.consumer_id === r.housemate_id).map(x => {
+    const shared = x => x.type === 'CONSUMPTION' && !x.consumer_id && activeIds.has(r.housemate_id);
+    const items = lines.data.filter(x => x.buyer_id === r.housemate_id || x.consumer_id === r.housemate_id || shared(x)).map(x => {
       const what = `${shortDate(x.transaction_date)} · ${esc(x.products?.name)} (${Number(x.quantity)} ${esc(x.products?.unit)}) · <b>${brl(x.total_price)}</b>`;
-      return x.type === 'PURCHASE'
-        ? `<li>🛒 ${what} <small class="muted">· ${x.is_collective ? 'para a casa' : 'só para si'}</small></li>`
-        : `<li>🍽️ ${what} <small class="muted">· consumo individual</small></li>`;
-    }).join('') || '<li class="muted">Nenhuma compra ou consumo individual no mês.</li>';
+      return x.type === 'PURCHASE' ? `<li>🛒 ${what} <small class="muted">· ${x.is_collective ? 'para a casa' : 'só para si'}</small></li>`
+        : x.consumer_id ? `<li>🍽️ ${what} <small class="muted">· consumiu sozinho(a)</small></li>`
+        : `<li>🍽️ ${what} <small class="muted">· geral da casa ÷ ${activeIds.size} = ${brl(x.total_price / activeIds.size)}</small></li>`;
+    }).join('') || '<li class="muted">Nenhuma compra ou consumo no mês.</li>';
     return `<details class="prod mate">
       <summary>
         <div class="prod-top"><b>${esc(r.avatar_icon)} ${esc(r.mate_name)} <small class="muted">· ${Number(r.share_pct)}%</small></b>${badge}</div>
-        <small class="muted">Gastou ${brl(r.paid)} · Consumiu ${brl(Number(r.direct_cost) + Number(r.collective_share))}</small>
+        <small class="muted">Gastou ${brl(r.paid)} · Parte nos gastos ${brl(Number(r.direct_cost) + Number(r.collective_share))}</small>
+        <small class="muted consumed">🍽️ Consumiu ${brl(r.consumed ?? 0)} (só informativo, não entra no saldo)</small>
         <div class="saldo ${b > 0 ? 'pos' : b < 0 ? 'neg' : ''}">Saldo ${brl(b)}</div>
       </summary>
       <ul class="plain lines">
         ${items}
-        <li class="muted">🏠 Parte dele(a) nas despesas da casa (${Number(r.share_pct)}%): <b>${brl(r.collective_share)}</b></li>
+        <li class="muted">🏠 ${Number(r.share_pct)}% das compras da casa: <b>${brl(r.collective_share)}</b></li>
+        ${Number(r.direct_cost) ? `<li class="muted">🛍️ Compras só para si: <b>${brl(r.direct_cost)}</b></li>` : ''}
       </ul>
     </details>`;
   }).join('') || '<p class="muted">Cadastre os moradores na aba Estoque.</p>';
