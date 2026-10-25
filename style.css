@@ -119,6 +119,17 @@ ul.plain li { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .badge.pos { background: var(--green); color: #04130a; }
 .badge:not(.low):not(.out):not(.pos) { background: var(--line); color: var(--muted); }
 .saldo { font-size: 18px; font-weight: 700; margin-top: 6px; }
+.hint { font-size: 13px; margin: 0 0 10px; }
+.ghost { width: 100%; background: none; color: var(--muted); padding: 12px; margin-top: 6px; }
+.actions-inline { float: right; }
+.actions-inline .link { float: none; }
+.mate-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; align-items: start; }
+.mate summary { list-style: none; cursor: pointer; }
+.mate summary::-webkit-details-marker { display: none; }
+.mate summary::after { content: 'Ver itens ▾'; display: block; font-size: 12px; color: var(--accent); margin-top: 6px; }
+.mate[open] summary::after { content: 'Ocultar ▴'; }
+.lines { margin: 10px 0 0; font-size: 13px; }
+.lines li { padding: 6px 0; }
 .saldo.pos { color: var(--green); }
 .saldo.neg { color: var(--red); }
 

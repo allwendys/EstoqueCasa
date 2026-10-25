@@ -106,13 +106,18 @@
       <details class="card">
         <summary>👥 Moradores</summary>
         <ul id="mateList" class="plain"></ul>
+        <p id="mateSum" class="muted hint"></p>
         <form id="mateForm">
           <div class="row">
             <input name="avatar_icon" value="🙂" maxlength="8" aria-label="Emoji do morador" class="emoji">
             <input name="name" placeholder="Nome" required aria-label="Nome do morador">
           </div>
           <input name="pix_key" placeholder="Chave Pix (opcional)" aria-label="Chave Pix">
-          <button class="primary" type="submit">Adicionar morador</button>
+          <label>% nas despesas coletivas da casa
+            <input name="share_pct" type="number" inputmode="decimal" step="0.01" min="0" max="100" required>
+          </label>
+          <button id="mateSubmit" class="primary" type="submit">Adicionar morador</button>
+          <button id="mateCancel" class="ghost" type="button" hidden>Cancelar edição</button>
         </form>
       </details>
 
@@ -134,15 +139,26 @@
       <div class="card"><h2>Compras vs. Consumo</h2><canvas id="barChart" height="220"></canvas></div>
       <div class="card"><h2>Gastos por nicho</h2><canvas id="pieChart" height="220"></canvas></div>
       <div class="card wide">
+        <div class="card-head">
+          <h2>🐶 Minnie <small class="muted">(no período)</small></h2>
+          <strong id="minnieTotal"></strong>
+        </div>
+        <ul id="minnieList" class="plain"></ul>
+      </div>
+      <div class="card wide">
         <h2>📦 Itens com sobra detectada <small class="muted">(últimos 30 dias)</small></h2>
         <ul id="excessList"></ul>
       </div>
       <div class="card wide">
         <div class="card-head">
-          <h2>🤝 Fechamento do mês / Acerto de contas</h2>
+          <h2>👥 Moradores</h2>
           <input id="settleMonth" type="month" aria-label="Mês do fechamento">
         </div>
-        <div id="mateCards" class="grid"></div>
+        <p class="muted hint">Toque em um morador para ver o que ele comprou e consumiu no mês.</p>
+        <div id="mateCards" class="mate-cards"></div>
+      </div>
+      <div class="card wide">
+        <h2>🤝 Acerto de contas</h2>
         <ul id="transferList" class="plain"></ul>
         <a id="settleWa" class="wa" target="_blank" rel="noopener">Compartilhar resumo no WhatsApp</a>
       </div>

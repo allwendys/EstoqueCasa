@@ -88,7 +88,7 @@ export function settle(rows) {
 
 export const settlementText = (month, rows, transfers) =>
   `💰 *Acerto de contas ${month.split('-').reverse().join('/')}*\n\n` +
-  rows.map(r => `${r.avatar_icon} ${r.mate_name}: gastou ${brl(r.paid)}, consumiu ${brl(Number(r.direct_cost) + Number(r.collective_share))} → ` +
+  rows.map(r => `${r.avatar_icon} ${r.mate_name}${r.share_pct != null ? ` (${Number(r.share_pct)}%)` : ''}: gastou ${brl(r.paid)}, consumiu ${brl(Number(r.direct_cost) + Number(r.collective_share))} → ` +
     (Number(r.balance) > 0 ? `recebe ${brl(r.balance)}` : Number(r.balance) < 0 ? `paga ${brl(-r.balance)}` : 'quite')).join('\n') +
   (transfers.length ? '\n\n*Transferências:*\n' + transfers.map(t =>
     `• ${t.from.mate_name} → ${t.to.mate_name}: ${brl(t.value)}${t.to.pix_key ? ` (Pix: ${t.to.pix_key})` : ''}`).join('\n') : '\n\nNinguém deve nada 🎉');

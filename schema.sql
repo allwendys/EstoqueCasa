@@ -153,3 +153,49 @@ language sql stable set search_path = public as $$
          round(paid - direct - share, 2)
   from per order by name;
 $$;
+
+-- ============================================================
+-- Migração 3: % de cada morador e categoria da Minnie (incremental)
+-- ============================================================
+
+alter table housemates add column share_pct numeric not null default 0 check (share_pct between 0 and 100);
+
+insert into categories (name, icon) values ('Minnie', '🐶') on conflict (name) do nothing;
+
+-- Mudou o tipo de retorno (nova coluna share_pct), então precisa recriar.
+drop function month_settlement(date);
+create function month_settlement(p_month date default current_date)
+returns table (housemate_id uuid, mate_name text, avatar_icon text, pix_key text, share_pct numeric,
+               paid numeric, direct_cost numeric, collective_share numeric, balance numeric)
+language sql stable set search_path = public as $$
+  with tx as (
+    select * from stock_transactions
+    where transaction_date >= date_trunc('month', p_month)::date
+      and transaction_date <  (date_trunc('month', p_month) + interval '1 month')::date
+  ),
+  -- Peso de cada ativo = % cadastrada normalizada para somar 100%; se ninguém tem %, divide igual.
+  w as (
+    select h.id,
+      case when sum(h.share_pct) over () > 0 then h.share_pct / sum(h.share_pct) over ()
+           else 1.0 / count(*) over () end as weight
+    from housemates h where h.is_active
+  ),
+  pot as (
+    select coalesce(sum(total_price) filter (where type = 'PURCHASE' and is_collective and buyer_id is not null), 0)
+         - coalesce(sum(total_price) filter (where type = 'CONSUMPTION' and consumer_id is not null), 0) as total
+    from tx
+  ),
+  per as (
+    select h.id, h.name, h.avatar_icon, h.pix_key, coalesce(w.weight, 0) as weight,
+      coalesce((select sum(total_price) from tx where type = 'PURCHASE' and buyer_id = h.id), 0) as paid,
+      coalesce((select sum(total_price) from tx where type = 'PURCHASE' and buyer_id = h.id and not is_collective), 0)
+    + coalesce((select sum(total_price) from tx where type = 'CONSUMPTION' and consumer_id = h.id), 0) as direct
+    from housemates h left join w on w.id = h.id
+    -- inativos só aparecem se movimentaram no mês, para o saldo continuar fechando em zero
+    where h.is_active or exists (select 1 from tx where tx.buyer_id = h.id or tx.consumer_id = h.id)
+  )
+  select id, name, avatar_icon, pix_key, round(weight * 100, 2), round(paid, 2), round(direct, 2),
+         round(weight * (select total from pot), 2),
+         round(paid - direct - weight * (select total from pot), 2)
+  from per order by name;
+$$;

@@ -1,4 +1,4 @@
-import { today, addDays, periodStart, totals, series, purchasesByCategory, level, restockList, findExcess, whatsappText, brl, settle, settlementText } from './logic.js';
+import { iso, today, addDays, periodStart, totals, series, purchasesByCategory, level, restockList, findExcess, whatsappText, brl, settle, settlementText } from './logic.js';
 
 // Chave publishable é pública por design; a proteção real é login + RLS com lista de e-mails (ver schema.sql).
 const db = supabase.createClient('https://ezeypnhjhfafabfismlz.supabase.co', 'sb_publishable_VyEstiPInyzfRecRxnbjXA_v2PRqTu6');
@@ -11,7 +11,7 @@ const LABEL = { out: 'Esgotado', low: 'Repor' };
 const saved = k => { try { return localStorage.getItem(k); } catch { return null; } };
 const save = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch { /* ignora */ } };
 
-const state = { categories: [], products: [], mates: [], person: saved('person'), type: 'PURCHASE', cat: null, productId: null, period: 'month' };
+const state = { categories: [], products: [], mates: [], editMate: null, person: saved('person'), type: 'PURCHASE', cat: null, productId: null, period: 'month' };
 let barChart, pieChart;
 
 function toast(msg, err = false) {
@@ -49,18 +49,52 @@ function renderMates() {
   $('#collectiveRow').hidden = !purchase;
 
   $('#mateList').innerHTML = state.mates.map(m =>
-    `<li class="${m.is_active ? '' : 'muted'}">${esc(m.avatar_icon)} <b>${esc(m.name)}</b>${m.pix_key ? ` · Pix: ${esc(m.pix_key)}` : ''}
-      <button type="button" class="link" data-toggle="${m.id}">${m.is_active ? 'Desativar' : 'Reativar'}</button></li>`
+    `<li class="${m.is_active ? '' : 'muted'}">
+      <span class="actions-inline">
+        <button type="button" class="link" data-edit="${m.id}">Editar</button>
+        <button type="button" class="link" data-toggle="${m.id}">${m.is_active ? 'Desativar' : 'Reativar'}</button>
+      </span>
+      ${esc(m.avatar_icon)} <b>${esc(m.name)}</b> · ${Number(m.share_pct)}%${m.pix_key ? `<br><small class="muted">Pix: ${esc(m.pix_key)}</small>` : ''}</li>`
   ).join('') || '<li class="muted">Nenhum morador ainda.</li>';
+
+  const active = state.mates.filter(m => m.is_active);
+  const sum = active.reduce((s, m) => s + Number(m.share_pct), 0);
+  const zero = active.filter(m => Number(m.share_pct) === 0).map(m => m.name);
+  $('#mateSum').textContent = sum === 0 ? 'Nenhuma % definida: as despesas da casa são divididas igualmente.'
+    : (Math.abs(sum - 100) < 0.01 ? '✓ As % dos moradores ativos somam 100%.'
+      : `⚠️ As % somam ${+sum.toFixed(2)}%. O fechamento ajusta proporcionalmente para 100%.`)
+      + (zero.length ? ` ${zero.join(', ')} com 0% não paga(m) nada das despesas da casa.` : '');
+  if (!state.editMate) $('#mateForm').elements.share_pct.placeholder = `% (sobram ${+Math.max(0, 100 - sum).toFixed(2)}%)`;
+}
+
+function editMate(id) {
+  const m = state.mates.find(x => x.id === id), f = $('#mateForm').elements;
+  state.editMate = id;
+  f.avatar_icon.value = m.avatar_icon; f.name.value = m.name; f.pix_key.value = m.pix_key ?? ''; f.share_pct.value = Number(m.share_pct);
+  $('#mateSubmit').textContent = 'Salvar alterações';
+  $('#mateCancel').hidden = false;
+  $('#mateForm').closest('details').open = true;
+  f.share_pct.focus();
+}
+
+function resetMateForm() {
+  state.editMate = null;
+  $('#mateForm').reset();
+  $('#mateSubmit').textContent = 'Adicionar morador';
+  $('#mateCancel').hidden = true;
+  renderMates();
 }
 
 async function submitMate(e) {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
-  const { error } = await db.from('housemates').insert({ name: f.name.trim(), avatar_icon: f.avatar_icon || '🙂', pix_key: f.pix_key.trim() || null });
+  const row = { name: f.name.trim(), avatar_icon: f.avatar_icon || '🙂', pix_key: f.pix_key.trim() || null, share_pct: +f.share_pct || 0 };
+  const { error } = state.editMate
+    ? await db.from('housemates').update(row).eq('id', state.editMate)
+    : await db.from('housemates').insert(row);
   if (error) return toast('Erro: ' + error.message, true);
-  toast('Morador adicionado ✓');
-  e.target.reset();
+  toast(state.editMate ? 'Morador atualizado ✓' : 'Morador adicionado ✓');
+  resetMateForm();
   await loadBase();
 }
 
@@ -201,7 +235,7 @@ async function enableNotifications() {
 async function loadDashboard() {
   const end = today(), start = periodStart(state.period, end), excessStart = addDays(end, -30);
   const { data, error } = await db.from('stock_transactions')
-    .select('product_id, type, quantity, total_price, transaction_date, products(categories(name))')
+    .select('product_id, type, quantity, total_price, transaction_date, buyer_id, products(name, unit, categories(name))')
     .gte('transaction_date', start < excessStart ? start : excessStart).lte('transaction_date', end);
   if (error) return toast('Erro: ' + error.message, true);
   if (!barChart) initCharts(); // só depois da aba visível, senão o canvas nasce com altura 0
@@ -226,22 +260,54 @@ async function loadDashboard() {
   $('#excessList').innerHTML = excess.map(x =>
     `<li><b>${esc(x.product.name)}</b> (${+x.units.toFixed(2)} ${esc(x.product.unit)} paradas, ${x.reason}) → Sugestão: reduzir compra no próximo ciclo</li>`
   ).join('') || '<li class="muted">Nenhuma sobra detectada 👌</li>';
+
+  // shortcut: identifica a Minnie pelo nome da categoria; se renomear a categoria, ajuste aqui.
+  const minnie = txs.filter(x => x.type === 'PURCHASE' && x.products?.categories?.name === 'Minnie')
+    .sort((a, b) => b.transaction_date.localeCompare(a.transaction_date));
+  const mateName = id => state.mates.find(m => m.id === id)?.name;
+  $('#minnieTotal').textContent = brl(minnie.reduce((s, x) => s + Number(x.total_price), 0));
+  $('#minnieList').innerHTML = minnie.map(x =>
+    `<li>${shortDate(x.transaction_date)} · ${esc(x.products.name)} (${Number(x.quantity)} ${esc(x.products.unit)}) · <b>${brl(x.total_price)}</b>${x.buyer_id ? ` <small class="muted">· pago por ${esc(mateName(x.buyer_id))}</small>` : ''}</li>`
+  ).join('') || '<li class="muted">Nenhuma compra para a Minnie no período. Lance na categoria 🐶 Minnie.</li>';
+
   loadSettlement();
 }
 
+const shortDate = d => d.slice(8, 10) + '/' + d.slice(5, 7);
+
 async function loadSettlement() {
   const month = $('#settleMonth').value || today().slice(0, 7);
-  const { data, error } = await db.rpc('month_settlement', { p_month: month + '-01' });
-  if (error) return toast('Erro no fechamento: ' + error.message, true);
+  const next = iso(new Date(+month.slice(0, 4), +month.slice(5, 7), 1)); // 1º dia do mês seguinte
+  const [{ data, error }, lines] = await Promise.all([
+    db.rpc('month_settlement', { p_month: month + '-01' }),
+    db.from('stock_transactions')
+      .select('transaction_date, type, quantity, total_price, is_collective, buyer_id, consumer_id, products(name, unit)')
+      .gte('transaction_date', month + '-01').lt('transaction_date', next)
+      .or('buyer_id.not.is.null,consumer_id.not.is.null')
+      .order('transaction_date', { ascending: false }),
+  ]);
+  if (error || lines.error) return toast('Erro no fechamento: ' + (error ?? lines.error).message, true);
 
   $('#mateCards').innerHTML = data.map(r => {
     const b = Number(r.balance);
     const badge = b > 0 ? '<span class="badge pos">A receber</span>' : b < 0 ? '<span class="badge out">Deve pagar</span>' : '<span class="badge">Quite</span>';
-    return `<div class="prod">
-      <div class="prod-top"><b>${esc(r.avatar_icon)} ${esc(r.mate_name)}</b>${badge}</div>
-      <small class="muted">Gastou ${brl(r.paid)} · Consumiu ${brl(Number(r.direct_cost) + Number(r.collective_share))}</small>
-      <div class="saldo ${b > 0 ? 'pos' : b < 0 ? 'neg' : ''}">Saldo ${brl(b)}</div>
-    </div>`;
+    const items = lines.data.filter(x => x.buyer_id === r.housemate_id || x.consumer_id === r.housemate_id).map(x => {
+      const what = `${shortDate(x.transaction_date)} · ${esc(x.products?.name)} (${Number(x.quantity)} ${esc(x.products?.unit)}) · <b>${brl(x.total_price)}</b>`;
+      return x.type === 'PURCHASE'
+        ? `<li>🛒 ${what} <small class="muted">· ${x.is_collective ? 'para a casa' : 'só para si'}</small></li>`
+        : `<li>🍽️ ${what} <small class="muted">· consumo individual</small></li>`;
+    }).join('') || '<li class="muted">Nenhuma compra ou consumo individual no mês.</li>';
+    return `<details class="prod mate">
+      <summary>
+        <div class="prod-top"><b>${esc(r.avatar_icon)} ${esc(r.mate_name)} <small class="muted">· ${Number(r.share_pct)}%</small></b>${badge}</div>
+        <small class="muted">Gastou ${brl(r.paid)} · Consumiu ${brl(Number(r.direct_cost) + Number(r.collective_share))}</small>
+        <div class="saldo ${b > 0 ? 'pos' : b < 0 ? 'neg' : ''}">Saldo ${brl(b)}</div>
+      </summary>
+      <ul class="plain lines">
+        ${items}
+        <li class="muted">🏠 Parte dele(a) nas despesas da casa (${Number(r.share_pct)}%): <b>${brl(r.collective_share)}</b></li>
+      </ul>
+    </details>`;
   }).join('') || '<p class="muted">Cadastre os moradores na aba Estoque.</p>';
 
   const transfers = settle(data);
@@ -329,7 +395,12 @@ $('#matePills').onclick = e => {
   renderMates();
 };
 $('#mateForm').onsubmit = submitMate;
-$('#mateList').onclick = e => { const id = e.target.dataset.toggle; if (id) toggleMate(id); };
+$('#mateList').onclick = e => {
+  const { toggle, edit } = e.target.dataset;
+  if (toggle) toggleMate(toggle);
+  if (edit) editMate(edit);
+};
+$('#mateCancel').onclick = resetMateForm;
 $('#transferList').onclick = e => { const k = e.target.dataset.pix; if (k) copyPix(k); };
 $('#settleMonth').onchange = loadSettlement;
 $('#catPills').onclick = e => {
